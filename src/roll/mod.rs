@@ -154,13 +154,13 @@ peg::parser! {
         pub rule expression() -> Expression = t:term()? _ s:sum()? { Expression::new(t, s).trace() }
 
         // <Sub'> ::= <AddOp> <_> <Product> <Sub'>?
-        rule sum() -> Sum = op:add_op() _ p:term() s:sum()? { Sum::new(op, p, s).trace() }
+        rule sum() -> Sum = op:add_op() _ p:term() _ s:sum()? { Sum::new(op, p, s).trace() }
 
         // <Term> ::= <Factor> <Product>?
         rule term() -> Term = f:factor() _ p:product()? { Term::new(f, p).trace() }
 
         // <Product> ::= MulOp <_> <Factor> <Product>?
-        rule product() -> Product = op:mul_op() _ f:factor() p:product()? { Product::new(op, f, p).trace()}
+        rule product() -> Product = op:mul_op() _ f:factor() _ p:product()? { Product::new(op, f, p).trace()}
 
         // <Factor> ::= <DiceRoll> | <Integer> | <NestedExpr>
         rule factor() -> Factor
@@ -172,7 +172,7 @@ peg::parser! {
         rule integer() -> i32
             = neg:"-"? n:number() {
                 let n = n as i32;
-                if neg.is_some() { -n } else { n }
+                (if neg.is_some() { -n } else { n }).trace()
             }
 
         // <Number> ::= <Digit> <Number>?
@@ -214,14 +214,14 @@ peg::parser! {
 
         // <AddOp> ::= "+" | "-"
         rule add_op() -> AddOp
-            = "+" { AddOp::Add }
-            / "-" { AddOp::Sub }
+            = "+" { AddOp::Add.trace() }
+            / "-" { AddOp::Sub.trace() }
 
         // <MulOp> ::= "*" | "/" | "%"
         rule mul_op() -> MulOp
-            = "*" { MulOp::Mul }
-            / "/" { MulOp::Div }
-            / "%" { MulOp::Mod }
+            = "*" { MulOp::Mul.trace() }
+            / "/" { MulOp::Div.trace() }
+            / "%" { MulOp::Mod.trace() }
     }
 }
 
