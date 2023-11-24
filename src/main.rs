@@ -1,147 +1,185 @@
-mod commands;
+mod db;
+mod discord;
+mod roll;
 
-use commands::{
-    exp::Exp, experience::Experience, mvp::Mvp, register_player::RegisterPlayer,
-    resolve_mvp::ResolveMvp, roll::Roll, schedule::Schedule, PathfinderBotCommand,
-};
 use dotenv::dotenv;
-use serenity::{
-    async_trait,
-    model::{
-        application::{
-            command::Command,
-            interaction::{Interaction, InteractionResponseType},
-        },
-        gateway::Ready,
-        id::GuildId,
-    },
-    prelude::{Context, EventHandler, GatewayIntents},
-    Client,
+use futures::future;
+use poise::{
+    command,
+    serenity_prelude::{self as serenity, GuildId},
 };
-use std::{
-    collections::HashMap,
-    env,
-    sync::{Arc, RwLock},
-};
+use r2d2_sqlite::SqliteConnectionManager;
+use std::env;
+
+// User data, which is stored and accessible in all command invocations
+struct Data {
+    conn_pool: r2d2::Pool<SqliteConnectionManager>,
+}
+
+type Error = Box<dyn std::error::Error + Send + Sync>;
+type Context<'a> = poise::Context<'a, Data, Error>;
+type Result<T> = core::result::Result<T, Error>;
 
 #[tokio::main]
 async fn main() {
-    // Load .env values, if available
+    // Load values from .env, if available.
     dotenv().ok();
+    pretty_env_logger::init();
 
-    // Login with a bot token from the env
-    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+    // Login with a bot token from the env.
+    let token = env::var("DISCORD_TOKEN").expect("Expected DISCORD_TOKEN in the environment");
+    let db_path = env::var("DATABASE_PATH").expect("Expected DATABASE_PATH in the environment");
+    let guild_id: u64 = env::var("GUILD_ID")
+        .expect("Expected GUILD_ID in the environment")
+        .parse()
+        .expect("GUILD_ID must be a number");
 
-    let connection =
-        sqlite::Connection::open_thread_safe("database.db").expect("Failed to open database");
-    let handler = Handler::new(Arc::new(connection));
+    let framework = poise::Framework::builder()
+        .options(poise::FrameworkOptions {
+            commands: vec![
+                exp(),
+                experience(),
+                mvp(),
+                register_player(),
+                resolve_mvp(),
+                roll(),
+                schedule(),
+                connections(),
+            ],
+            ..Default::default()
+        })
+        .token(token)
+        .intents(serenity::GatewayIntents::non_privileged())
+        .setup(move |ctx, _ready, framework| {
+            Box::pin(async move {
+                log::info!("Connected to Discord!");
+                let mgr = SqliteConnectionManager::file(db_path);
+                let pool = r2d2::Pool::new(mgr).expect("Failed to create connection pool");
 
-    let mut client = Client::builder(token, GatewayIntents::empty())
-        .event_handler(handler)
-        .await
-        .expect("Error creating client");
+                let connection = pool.get().expect("Failed to get connection from pool");
 
-    // Finally, start a single shard, and start listening to events.
-    //
-    // Shards will automatically attempt to reconnect, and will perform
-    // exponentiontal backoff until it reconnects.
-    if let Err(why) = client.start().await {
-        println!("An error occurred while starting the client: {:?}", why);
-    }
+                db::setup(&connection).expect("Failed to setup database");
+
+                poise::builtins::register_in_guild(
+                    ctx.http.clone(),
+                    &framework.options().commands,
+                    GuildId(guild_id),
+                )
+                .await?;
+                // Uncomment to register globally.
+                // poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+                Ok(Data { conn_pool: pool })
+            })
+        });
+
+    log::info!("Connecting to Discord..");
+    framework.run().await.expect("Failed to start framework");
 }
 
-struct Handler {
-    handlers: HashMap<&'static str, Arc<RwLock<dyn PathfinderBotCommand + Send + Sync>>>,
+// Adds experience to a player
+#[command(slash_command)]
+async fn exp(
+    ctx: Context<'_>,
+    #[description = "Player"] player: serenity::Member,
+    #[description = "Experience"] experience: u32,
+) -> Result<()> {
+    let conn = ctx.data().conn_pool.clone().get()?;
+
+    let player_id = *player.user.id.as_u64() as i64;
+    let curr_xp = db::get_xp(&conn, player_id)?;
+    let new_xp = curr_xp + experience as i64;
+
+    db::set_xp(&conn, player_id, new_xp)?;
+
+    let response = format!(
+        "Updated {}'s account from {}xp to {}xp.",
+        player.user.name, curr_xp, new_xp
+    );
+    ctx.say(response).await?;
+    Ok(())
 }
 
-impl Handler {
-    pub fn new(conn: Arc<sqlite::ConnectionThreadSafe>) -> Self {
-        let mut handlers: HashMap<&str, Arc<RwLock<dyn PathfinderBotCommand + Send + Sync>>> =
-            HashMap::new();
-        handlers.insert("exp", Arc::new(RwLock::new(Exp::new(conn.clone()))));
-        handlers.insert(
-            "experience",
-            Arc::new(RwLock::new(Experience::new(conn.clone()))),
-        );
-        handlers.insert("mvp", Arc::new(RwLock::new(Mvp::new(conn.clone()))));
-        handlers.insert(
-            "registerplayer",
-            Arc::new(RwLock::new(RegisterPlayer::new(conn.clone()))),
-        );
-        handlers.insert(
-            "resolve-mvp",
-            Arc::new(RwLock::new(ResolveMvp::new(conn.clone()))),
-        );
-        handlers.insert("roll", Arc::new(RwLock::new(Roll)));
-        handlers.insert("schedule", Arc::new(RwLock::new(Schedule::new())));
+// Returns the experience of all players.
+#[command(slash_command)]
+async fn experience(ctx: Context<'_>) -> Result<()> {
+    let conn = ctx.data().conn_pool.clone().get()?;
 
-        Self { handlers }
-    }
+    let id_xp = db::get_all_xp(&conn)?;
+    let user_xp_futures = id_xp
+        .iter()
+        .map(|(id, xp)| async move {
+            let user = discord::get_user(ctx, id).await?;
+            let nick = discord::get_nick_or_name(ctx, user).await;
+            Ok::<_, Error>(format!("{}: {}", nick, xp))
+        })
+        .collect::<Vec<_>>();
+
+    let user_xp = future::try_join_all(user_xp_futures).await?.join("\n");
+
+    ctx.say(user_xp).await?;
+    Ok(())
 }
 
-#[async_trait]
-impl EventHandler for Handler {
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::ApplicationCommand(command) = interaction {
-            println!("Received command interaction: {:#?}", command);
+// Nominates a player as the MVP
+#[command(slash_command)]
+async fn mvp(ctx: Context<'_>) -> Result<()> {
+    let response = "MVP";
+    ctx.say(response).await?;
+    Ok(())
+}
 
-            let content = self
-                .handlers
-                .get(command.data.name.as_str())
-                .expect("Unknown command")
-                .read()
-                .expect("Unable to read")
-                .run(&command.data.options);
+// Registers a player
+#[command(slash_command, rename = "registerplayer")]
+async fn register_player(
+    ctx: Context<'_>,
+    #[description = "Player"] player: serenity::Member,
+) -> Result<()> {
+    let conn = ctx.data().conn_pool.clone().get()?;
 
-            if let Err(why) = command
-                .create_interaction_response(&ctx.http, |response| {
-                    response
-                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                        .interaction_response_data(|message| message.content(content))
-                })
-                .await
-            {
-                println!("Cannot respond to slash command: {}", why);
-            }
+    db::create_player(&conn, player.user.id.0 as i64)?;
+    ctx.say(format!("Created {} with 0 experience.", player.user.name))
+        .await?;
+    Ok(())
+}
+
+// Resolves the MVP
+#[command(slash_command, rename = "resolve-mvp")]
+async fn resolve_mvp(ctx: Context<'_>) -> Result<()> {
+    let response = "Resolve MVP";
+    ctx.say(response).await?;
+    Ok(())
+}
+
+// Rolls dice
+#[command(slash_command)]
+async fn roll(ctx: Context<'_>, #[description = "Dice"] dice: String) -> Result<()> {
+    match roll::eval(&dice).map_err(|e| e.to_string()) {
+        Ok(results) => {
+            ctx.say(format!("{}", results)).await?;
+        }
+        Err(e) => {
+            ctx.say(format!("Error: {}", e)).await?;
         }
     }
+    Ok(())
+}
 
-    async fn ready(&self, ctx: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+// Schedules a game
+#[command(slash_command)]
+async fn schedule(ctx: Context<'_>) -> Result<()> {
+    let response = "Schedule";
+    ctx.say(response).await?;
+    Ok(())
+}
 
-        let guild_id = GuildId(
-            env::var("GUILD_ID")
-                .expect("Expected GUILD_ID in the environment")
-                .parse()
-                .expect("GUILD_ID must be an integer"),
-        );
-
-        let commands = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
-            commands
-                .create_application_command(|command| commands::exp::register(command))
-                .create_application_command(|command| commands::experience::register(command))
-                .create_application_command(|command| commands::mvp::register(command))
-                .create_application_command(|command| commands::register_player::register(command))
-                .create_application_command(|command| commands::resolve_mvp::register(command))
-                .create_application_command(|command| commands::roll::register(command))
-                .create_application_command(|command| commands::schedule::register(command))
-        })
-        .await;
-
-        println!(
-            "I now have the following guild slash commands: {:#?}",
-            commands
-        );
-
-        // TODO: What is this??
-        let guild_command = Command::create_global_application_command(&ctx.http, |command| {
-            commands::test::register(command)
-        })
-        .await;
-
-        println!(
-            "I created the following global slash command: {:#?}",
-            guild_command
-        );
-    }
+#[command(slash_command)]
+async fn connections(ctx: Context<'_>) -> Result<()> {
+    let pool = ctx.data().conn_pool.clone();
+    ctx.say(format!(
+        "Connections: {}, Idle connections: {}",
+        pool.state().connections,
+        pool.state().idle_connections
+    ))
+    .await?;
+    Ok(())
 }
