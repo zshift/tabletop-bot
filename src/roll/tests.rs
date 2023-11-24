@@ -103,10 +103,12 @@ mod tests {
                 println!("Testing parse of `{}`", expr);
 
                 let ast = parser::expression(expr.trim()).map_err(|e| {
+                    #[cfg(feature = "trace")]
                     println!("Failed to parse `{}`: {:#?}", expr, e);
                     e
                 })?;
 
+                #[cfg(feature = "trace")]
                 println!("AST: {:#?}", ast);
 
                 let output = ast.eval()?;
@@ -124,10 +126,32 @@ mod tests {
     }}
 
     parser_test! {addition, "1 + 1", |output| {
+        assert_eq!(0, output.rolls.len());
         assert_eq!(2, output.total);
     }}
 
+    parser_test! {subtraction, "1 - 1", |output| {
+        assert_eq!(0, output.rolls.len());
+        assert_eq!(0, output.total);
+    }}
+
+    parser_test! {multiplication, "2 * 3", |output| {
+        assert_eq!(0, output.rolls.len());
+        assert_eq!(6, output.total);
+    }}
+
+    parser_test! {division, "6 / 3", |output| {
+        assert_eq!(0, output.rolls.len());
+        assert_eq!(2, output.total);
+    }}
+
+    parser_test! {negative, "-6", |output| {
+        assert_eq!(0, output.rolls.len());
+        assert_eq!(-6, output.total);
+    }}
+
     parser_test! {missing_count, "d4", |output| {
+        assert_eq!(1, output.rolls.len());
         assert!((1..=4).contains(&output.total));
     }}
 
@@ -153,7 +177,17 @@ mod tests {
     //     assert!((2..=40).contains(&output.total));
     // }}
 
-    parser_test! {arithmetic, "1 + 3 * 5 - 2 / 2 - 1", |output| {
+    parser_test! {arithmetic1, "1 + 3 * 5", |output| {
+        assert_eq!(0, output.rolls.len());
+        assert_eq!(16, output.total);
+    }}
+
+    parser_test! {arithmetic2, "1 + 3 * 5 - 2", |output| {
+        assert_eq!(0, output.rolls.len());
+        assert_eq!(14, output.total);
+    }}
+
+    parser_test! {arithmetic3, "1 + 3 * 5 - 2 / 2 - 1", |output| {
         assert_eq!(0, output.rolls.len());
         assert_eq!(14, output.total);
     }}
@@ -180,7 +214,7 @@ mod tests {
 
     parser_test! {arithmetic_with_dice4, "1d4 + 2d4 * 3d4", |output| {
         assert_eq!(6, output.rolls.len());
-        assert!((6..=24).contains(&output.total));
+        assert!((7..=100).contains(&output.total));
     }}
 
     parser_test! {parens, "1d(4 + 2)", |output| {

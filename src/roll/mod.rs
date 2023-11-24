@@ -90,6 +90,21 @@ pub fn eval(expression: &str) -> Result<Output> {
     ast.eval()
 }
 
+trait Traceable<T> {
+    fn trace(self) -> T;
+}
+
+impl<T> Traceable<T> for T
+where
+    T: std::fmt::Debug,
+{
+    fn trace(self) -> T {
+        #[cfg(feature = "trace")]
+        println!("{:#?}", self);
+        self
+    }
+}
+
 peg::parser! {
     /// # Roll Parser
     ///
@@ -138,9 +153,9 @@ peg::parser! {
         /// <Expression> ::= <Sum> | <RollExpression> | <DiceRoll>
         /// ````
         pub rule expression() -> Expression
-            = s:sum() { Expression::Sum(Box::new(s)) }
-            / re:roll_expression() { Expression::RollExpr(Box::new(re)) }
-            / dr:dice_roll() { Expression::DiceRoll(Box::new(dr)) }
+            = s:sum() { Expression::Sum(Box::new(s)).trace() }
+            // / re:roll_expression() { Expression::RollExpr(Box::new(re)).print() }
+            // / dr:dice_roll() { Expression::DiceRoll(Box::new(dr)).print() }
 
         /// Rolls the dice :D
         ///
@@ -154,29 +169,29 @@ peg::parser! {
                     sides: Box::new(sides),
                     keep,
                     drop,
-                }
+                }.trace()
             }
 
         // <RollExpression> ::= <Number> | "(" <_> <Expression> <_> ")"
         rule roll_expression() -> RollExpr
-            = "(" _ e:expression() _ ")" { RollExpr::Expression(e) }
-            / n:number() { RollExpr::Number(n) }
+            = "(" _ e:expression() _ ")" { RollExpr::Expression(e).trace() }
+            / n:number() { RollExpr::Number(n).trace() }
 
         // <Sum> ::= <Product> <Sum'>?
         rule sum() -> SumExpr
             = p:product() _ s:sum_()? {
-                SumExpr { product: Box::new(p), sum: s.map(Box::new) }
+                SumExpr { product: Box::new(p), sum: s.map(Box::new) }.trace()
             }
 
         // <Sub'> ::= <AddOp> <_> <Product> <Sub'>?
         rule sum_() -> Sum = op:add_op() _ p:product() s:sum_()? {
-            Sum::new(op, p, s)
+            Sum::new(op, p, s).trace()
         }
 
         // <Product> ::= <Factor> <Product'>? | "-" <_> <Factor>
         rule product() -> ProductExpr
             = f:factor() p:product_()? {
-                ProductExpr::new(f, p)
+                ProductExpr::new(f, p).trace()
             }
             / "-" _ f:factor()  {
                 ProductExpr::new(
@@ -186,33 +201,33 @@ peg::parser! {
                         right: f,
                         extra: None,
                     }),
-                )
+                ).trace()
             }
 
         // <Product'> ::= MulOp <_> <Factor> <Product'>?
-        rule product_() -> Product = _ op:mul_op() _ f:factor() p:product_() {
-            Product::new(op, f, Some(p))
+        rule product_() -> Product = _ op:mul_op() _ f:factor() p:product_()? {
+            Product::new(op, f, p).trace()
         }
 
         // <Factor> ::= <RollExpression> | <DiceRoll>
         rule factor() -> Factor
-            = dr:dice_roll() { Factor::DiceRoll(Box::new(dr)) }
-            / re:roll_expression() { Factor::RollExpr(Box::new(re)) }
+            = dr:dice_roll() { Factor::DiceRoll(Box::new(dr)).trace() }
+            / re:roll_expression() { Factor::RollExpr(Box::new(re)).trace() }
 
 
         // <KeepLow> ::= "kl" <RollExpression>
         // <KeepHigh> ::= ("k" | "kh") <RollExpression>
         // <Keep> ::= <KeepHigh> | <KeepLow>
         rule keep() -> Keep
-            = "kl" e:roll_expression() { Keep::Low(Box::new(e)) }
-            / ("k" / "kh") e:roll_expression() { Keep::High(Box::new(e)) }
+            = "kl" e:roll_expression() { Keep::Low(Box::new(e)).trace() }
+            / ("k" / "kh") e:roll_expression() { Keep::High(Box::new(e)).trace() }
 
         // <DropLow> ::= ("d" | "dl") <RollExpression>
         // <DropHigh> ::= "dh" <RollExpression>
         // <Drop> ::= <DropHigh> | <DropLow>
         rule drop() -> Drop
-            = "dh" e:roll_expression() { Drop::High(Box::new(e)) }
-            / ("d" / "dl") e:roll_expression() { Drop::Low(Box::new(e)) }
+            = "dh" e:roll_expression() { Drop::High(Box::new(e)).trace() }
+            / ("d" / "dl") e:roll_expression() { Drop::Low(Box::new(e)).trace() }
 
         // <AddOp> ::= "+" | "-"
         rule add_op() -> AddOp
