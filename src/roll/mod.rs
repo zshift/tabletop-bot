@@ -98,6 +98,7 @@ impl<T> Traceable<T> for T
 where
     T: std::fmt::Debug,
 {
+    #[inline]
     fn trace(self) -> T {
         #[cfg(feature = "trace")]
         println!("{:#?}", self);
@@ -113,17 +114,18 @@ peg::parser! {
     /// ## Backus–Naur form
     ///
     /// ```bnf
-    /// <Expression>     ::= <Sum> | <RollExpression> | <DiceRoll>
+    /// <Expression>     ::= <Term>? <_> <Sum>?
+    /// <Sum>            ::= <AddOp> <_> <Term> <Sum>?
+    ///
+    /// <Term>           ::= <Factor> <_> <Product>?
+    /// <Product>        ::= <MulOp> <_> <Factor> <Product>?
+    ///
+    /// <Factor>         ::= <Integer> | <DiceRoll> | <NestedExpr>
+    ///
     /// <DiceRoll>       ::= <RollExpression>? "d" <RollExpression> <Keep>? <Drop>?
-    /// <RollExpression> ::= <Number> | "(" <_> <Expression> <_> ")"
+    /// <RollExpression> ::= <Number> | <NestedExpr>
     ///
-    /// <Sum>            ::= <Product> <_> <Sum_>?
-    /// <Sum_>           ::= <AddOp> <_> <Product> <Sum_>?
-    ///
-    /// <Product>        ::= <Factor> <_> <Product_>? | "-" <_> <Factor>
-    /// <Product_>       ::= <MulOp> <_> <Factor> <Product_>?
-    ///
-    /// <Factor>         ::= <RollExpression> | <DiceRoll>
+    /// <NestedExpr>     ::= "(" <_> <Expression> <_> ")"
     ///
     /// <AddOp>          ::= "+" | "-"
     /// <MulOp>          ::= "*" | "/" | "%"
@@ -136,6 +138,7 @@ peg::parser! {
     /// <DropHigh>       ::= "dh" <RollExpression>
     /// <Drop>           ::= <DropHigh> | <DropLow>
     ///
+    /// <Integer>        ::= "-"? <Number>
     /// <Number>         ::= <Digit> <Number>?
     /// <Digit>          ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
     ///
@@ -147,72 +150,52 @@ peg::parser! {
         // To ignore whitespace
         rule _ = [' ' | '\t' ]*
 
-        /// Evaluates the expression, and rolls dice in compliance with that expression.
-        ///
-        /// ```bnf
-        /// <Expression> ::= <Sum> | <RollExpression> | <DiceRoll>
-        /// ````
-        pub rule expression() -> Expression
-            = s:sum() { Expression::Sum(Box::new(s)).trace() }
-            // / re:roll_expression() { Expression::RollExpr(Box::new(re)).print() }
-            // / dr:dice_roll() { Expression::DiceRoll(Box::new(dr)).print() }
+        // <Expression> ::= <Product> <Sum'>?
+        pub rule expression() -> Expression = t:term()? _ s:sum()? { Expression::new(t, s).trace() }
+
+        // <Sub'> ::= <AddOp> <_> <Product> <Sub'>?
+        rule sum() -> Sum = op:add_op() _ p:term() s:sum()? { Sum::new(op, p, s).trace() }
+
+        // <Term> ::= <Factor> <Product>?
+        rule term() -> Term = f:factor() _ p:product()? { Term::new(f, p).trace() }
+
+        // <Product> ::= MulOp <_> <Factor> <Product>?
+        rule product() -> Product = op:mul_op() _ f:factor() p:product()? { Product::new(op, f, p).trace()}
+
+        // <Factor> ::= <DiceRoll> | <Integer> | <NestedExpr>
+        rule factor() -> Factor
+            = dr:dice_roll() { Factor::DiceRoll(Box::new(dr)).trace() }
+            / i:integer() { Factor::Integer(i).trace()}
+            / ne:nested_expression() { Factor::Expression(Box::new(ne)).trace() }
+
+        // <Integer> ::= "-"? <Number>
+        rule integer() -> i32
+            = neg:"-"? n:number() {
+                let n = n as i32;
+                if neg.is_some() { -n } else { n }
+            }
+
+        // <Number> ::= <Digit> <Number>?
+        // <Digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+        rule number() -> u32 = n:$(['0'..='9']+) { n.parse::<u32>().unwrap().trace() }
+
+        // <NestedExpr> ::= "(" <_> <Expression> <_> ")"
+        rule nested_expression() -> Expression = "(" _ e:expression() _ ")" { e.trace() }
 
         /// Rolls the dice :D
         ///
         /// ```bnf
         /// <DiceRoll> ::= <RollExpression>? "d" <RollExpression> <Keep>? <Drop>?
         /// ```
-        pub rule dice_roll() -> DiceRoll
+        rule dice_roll() -> DiceRoll
             = count:roll_expression()? "d" sides:roll_expression() keep:keep()? drop:drop()? {
-                DiceRoll {
-                    count: count.map(Box::new),
-                    sides: Box::new(sides),
-                    keep,
-                    drop,
-                }.trace()
+                DiceRoll::new(count, sides, keep, drop).trace()
             }
 
         // <RollExpression> ::= <Number> | "(" <_> <Expression> <_> ")"
         rule roll_expression() -> RollExpr
-            = "(" _ e:expression() _ ")" { RollExpr::Expression(e).trace() }
+            = ne:nested_expression() { RollExpr::Expression(ne).trace() }
             / n:number() { RollExpr::Number(n).trace() }
-
-        // <Sum> ::= <Product> <Sum'>?
-        rule sum() -> SumExpr
-            = p:product() _ s:sum_()? {
-                SumExpr { product: Box::new(p), sum: s.map(Box::new) }.trace()
-            }
-
-        // <Sub'> ::= <AddOp> <_> <Product> <Sub'>?
-        rule sum_() -> Sum = op:add_op() _ p:product() s:sum_()? {
-            Sum::new(op, p, s).trace()
-        }
-
-        // <Product> ::= <Factor> <Product'>? | "-" <_> <Factor>
-        rule product() -> ProductExpr
-            = f:factor() p:product_()? {
-                ProductExpr::new(f, p).trace()
-            }
-            / "-" _ f:factor()  {
-                ProductExpr::new(
-                    Factor::RollExpr(Box::new(RollExpr::Number(-1))),
-                    Some(Product {
-                        op: MulOp::Mul,
-                        right: f,
-                        extra: None,
-                    }),
-                ).trace()
-            }
-
-        // <Product'> ::= MulOp <_> <Factor> <Product'>?
-        rule product_() -> Product = _ op:mul_op() _ f:factor() p:product_()? {
-            Product::new(op, f, p).trace()
-        }
-
-        // <Factor> ::= <RollExpression> | <DiceRoll>
-        rule factor() -> Factor
-            = dr:dice_roll() { Factor::DiceRoll(Box::new(dr)).trace() }
-            / re:roll_expression() { Factor::RollExpr(Box::new(re)).trace() }
 
 
         // <KeepLow> ::= "kl" <RollExpression>
@@ -239,10 +222,6 @@ peg::parser! {
             = "*" { MulOp::Mul }
             / "/" { MulOp::Div }
             / "%" { MulOp::Mod }
-
-        // <Number> ::= <Digit> <Number>?
-        // <Digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
-        rule number() -> i32 = n:$(['0'..='9']+) { n.parse().unwrap() }
     }
 }
 
@@ -385,32 +364,15 @@ impl Display for Output {
 // endregion: RollResults
 
 #[derive(Clone, Debug)]
-pub enum Expression {
-    Sum(Box<SumExpr>),
-    RollExpr(Box<RollExpr>),
-    DiceRoll(Box<DiceRoll>),
-}
-
-impl Eval for Expression {
-    fn eval(self) -> Result<Output> {
-        match self {
-            Expression::Sum(sum) => sum.eval(),
-            Expression::RollExpr(roll_expr) => roll_expr.eval(),
-            Expression::DiceRoll(dice_roll) => dice_roll.eval(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
 pub enum RollExpr {
-    Number(i32),
+    Number(u32),
     Expression(Expression),
 }
 
 impl Eval for RollExpr {
     fn eval(self) -> Result<Output> {
         match self {
-            RollExpr::Number(n) => Ok(Output::of_num(n)),
+            RollExpr::Number(n) => Ok(Output::of_num(n as i32)),
             RollExpr::Expression(e) => e.eval(),
         }
     }
@@ -419,16 +381,39 @@ impl Eval for RollExpr {
 // region: Sum
 
 #[derive(Clone, Debug)]
-pub struct SumExpr {
-    pub product: Box<ProductExpr>,
+pub struct Expression {
+    pub term: Box<Term>,
     pub sum: Option<Box<Sum>>,
 }
 
-impl SumExpr {}
+impl Expression {
+    pub fn new(term: Option<Term>, sum: Option<Sum>) -> Self {
+        if let Some(term) = term {
+            Self {
+                term: Box::new(term),
+                sum: sum.map(Box::new),
+            }
+        } else {
+            Self {
+                term: Box::new(Term::new(Factor::Integer(0), None)),
+                sum: sum.map(Box::new),
+            }
+        }
+    }
+}
 
-impl Eval for SumExpr {
+impl Default for Expression {
+    fn default() -> Self {
+        Self {
+            term: Box::new(Term::new(Factor::Integer(0), None)),
+            sum: None,
+        }
+    }
+}
+
+impl Eval for Expression {
     fn eval(self) -> Result<Output> {
-        let product = self.product.eval()?;
+        let product = self.term.eval()?;
 
         if let Some(sum) = self.sum {
             sum.eval(product)
@@ -441,12 +426,12 @@ impl Eval for SumExpr {
 #[derive(Clone, Debug)]
 pub struct Sum {
     op: AddOp,
-    right: Box<ProductExpr>,
+    right: Box<Term>,
     extra: Option<Box<Sum>>,
 }
 
 impl Sum {
-    pub fn new(op: AddOp, right: ProductExpr, extra: Option<Sum>) -> Self {
+    pub fn new(op: AddOp, right: Term, extra: Option<Sum>) -> Self {
         Self {
             op,
             right: Box::new(right),
@@ -474,10 +459,7 @@ impl Default for Sum {
         // TODO: this is a hack to get around the fact that the parser doesn't support unary
         Self {
             op: AddOp::Add,
-            right: Box::new(ProductExpr::new(
-                Factor::RollExpr(Box::new(RollExpr::Number(0))),
-                None,
-            )),
+            right: Box::new(Term::new(Factor::Integer(0), None)),
             extra: None,
         }
     }
@@ -494,12 +476,12 @@ pub enum AddOp {
 // region: Product
 
 #[derive(Clone, Debug)]
-pub struct ProductExpr {
+pub struct Term {
     pub factor: Box<Factor>,
     pub product: Option<Box<Product>>,
 }
 
-impl ProductExpr {
+impl Term {
     pub fn new(factor: Factor, product: Option<Product>) -> Self {
         Self {
             factor: Box::new(factor),
@@ -508,7 +490,7 @@ impl ProductExpr {
     }
 }
 
-impl Eval for ProductExpr {
+impl Eval for Term {
     fn eval(self) -> Result<Output> {
         let left = self.factor.eval()?;
 
@@ -558,7 +540,7 @@ impl Default for Product {
         // TODO: this is a hack to get around the fact that the parser doesn't support unary
         Self {
             op: MulOp::Mul,
-            right: Factor::RollExpr(Box::new(RollExpr::Number(1))),
+            right: Factor::Integer(1),
             extra: None,
         }
     }
@@ -575,14 +557,16 @@ pub enum MulOp {
 
 #[derive(Clone, Debug)]
 pub enum Factor {
-    RollExpr(Box<RollExpr>),
+    Integer(i32),
+    Expression(Box<Expression>),
     DiceRoll(Box<DiceRoll>),
 }
 
 impl Eval for Factor {
     fn eval(self) -> Result<Output> {
         match self {
-            Factor::RollExpr(roll_expr) => roll_expr.eval(),
+            Factor::Integer(n) => Ok(Output::of_num(n)),
+            Factor::Expression(expr) => expr.eval(),
             Factor::DiceRoll(dice_roll) => dice_roll.eval(),
         }
     }
@@ -610,6 +594,20 @@ pub struct DiceRoll {
 }
 
 impl DiceRoll {
+    pub fn new(
+        count: Option<RollExpr>,
+        sides: RollExpr,
+        keep: Option<Keep>,
+        drop: Option<Drop>,
+    ) -> Self {
+        Self {
+            count: count.map(Box::new),
+            sides: Box::new(sides),
+            keep,
+            drop,
+        }
+    }
+
     fn high_to_low(rolls: &mut [&mut Roll]) {
         rolls.sort_by(|a, b| b.cmp(a))
     }
