@@ -103,8 +103,7 @@ pub(crate) fn get_all_xp(conn: &Connection) -> Result<Vec<(i64, i64)>> {
             Ok((id, xp))
         })
         .map(|iter| {
-            iter.filter(|r| r.is_ok())
-                .map(|x| x.unwrap())
+            iter.filter_map(|x| x.ok())
                 .collect::<Vec<_>>()
         })?;
 

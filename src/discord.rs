@@ -15,7 +15,7 @@ pub(crate) async fn get_user(ctx: Context<'_>, id: &i64) -> Result<serenity::Use
 pub(crate) async fn get_nick_or_name(ctx: Context<'_>, user: serenity::User) -> String {
     if let Some(guild_id) = ctx.guild_id() {
         if log::log_enabled!(log::Level::Debug) {
-            if let Some(guild) = guild_id.to_guild_cached(&ctx) {
+            if let Some(guild) = guild_id.to_guild_cached(ctx) {
                 log::debug!(
                     "Getting nickname for {user} in Guild {guild}",
                     user = user.name,

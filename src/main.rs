@@ -37,14 +37,11 @@ type Result<T> = core::result::Result<T, Error>;
 
 async fn handle_error(error: FrameworkError<'_, Data<serenity::Context, Hc128Rng>, Error>) {
     log::error!("Error: {}", error);
-    match error.ctx() {
-        Some(ctx) => {
-            match ctx.say(format!("Error: {}", error)).await {
-                Ok(_) => (),
-                Err(e) => log::error!("Error sending error message: {}", e),
-            };
+
+    if let Some(ctx) = error.ctx() {
+        if let Err(e) = ctx.say(format!("Error: {}", error)).await {
+            log::error!("Error sending error message: {}", e);
         }
-        None => (),
     }
 }
 
