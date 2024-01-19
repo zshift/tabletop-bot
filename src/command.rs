@@ -1,7 +1,6 @@
+use crate::{db, discord, Context, Error, Result};
 use futures::future;
 use poise::{command, serenity_prelude as serenity};
-
-use crate::{db, discord, Context, Error, Result};
 
 // Adds experience to a player
 #[command(slash_command)]
@@ -12,7 +11,7 @@ pub async fn exp(
 ) -> Result<()> {
     let conn = ctx.data().pool.clone().get()?;
 
-    let player_id = *player.user.id.as_u64() as i64;
+    let player_id = player.user.id.get() as i64;
     let curr_xp = db::get_xp(&conn, player_id)?;
     let new_xp = curr_xp + experience as i64;
 
@@ -29,9 +28,15 @@ pub async fn exp(
 // Returns the experience of all players.
 #[command(slash_command)]
 pub async fn experience(ctx: Context<'_>) -> Result<()> {
+    log::debug!("Getting experience");
     let conn = ctx.data().pool.clone().get()?;
 
     let id_xp = db::get_all_xp(&conn)?;
+    if id_xp.is_empty() {
+        ctx.say("No experience yet").await?;
+        return Ok(());
+    }
+
     let user_xp_futures = id_xp
         .iter()
         .map(|(id, xp)| async move {
@@ -42,8 +47,17 @@ pub async fn experience(ctx: Context<'_>) -> Result<()> {
         .collect::<Vec<_>>();
 
     let user_xp = future::try_join_all(user_xp_futures).await?.join("\n");
+    let user_xp = user_xp.trim();
 
+    if user_xp.trim().is_empty() {
+        ctx.say("No experience yet").await?;
+        return Ok(());
+    }
+
+    log::debug!("Sending experience: {}", user_xp);
     ctx.say(user_xp).await?;
+
+    log::debug!("Done sending experience");
     Ok(())
 }
 
@@ -52,8 +66,8 @@ pub async fn experience(ctx: Context<'_>) -> Result<()> {
 pub async fn mvp(ctx: Context<'_>, #[description = "MVP"] mvp: serenity::Member) -> Result<()> {
     let conn = ctx.data().pool.clone().get()?;
 
-    let player_id = ctx.author().id.0 as i64;
-    let mvp_id = mvp.user.id.0 as i64;
+    let player_id = ctx.author().id.get() as i64;
+    let mvp_id = mvp.user.id.get() as i64;
 
     let result = db::vote_for_mvp(&conn, player_id, mvp_id);
     match result {
@@ -78,7 +92,7 @@ pub async fn register_player(
     #[description = "Player"] player: serenity::Member,
 ) -> Result<()> {
     let conn = ctx.data().pool.clone().get()?;
-    let player_id = *player.user.id.as_u64() as i64;
+    let player_id = player.user.id.get() as i64;
 
     db::create_player(&conn, player_id)?;
     ctx.say(format!("Created {} with 0 experience.", player.user.name))
@@ -147,7 +161,7 @@ pub async fn schedule(
 ) -> Result<()> {
     log::info!("Scheduling message: {} on {}", msg, on);
 
-    let channel_id = *channel.id().as_u64();
+    let channel_id = channel.id().get();
 
     let sch = db::ScheduledMessage {
         channel_id,

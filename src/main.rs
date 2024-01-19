@@ -43,7 +43,7 @@ async fn handle_error<T>(error: FrameworkError<'_, T, Error>) {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     // Load values from .env, if available.
     dotenv().ok();
     pretty_env_logger::init();
@@ -71,8 +71,6 @@ async fn main() {
             on_error: |error| Box::pin(handle_error(error)),
             ..Default::default()
         })
-        .token(token)
-        .intents(serenity::GatewayIntents::non_privileged())
         .setup(move |ctx, ready, framework| {
             Box::pin(async move {
                 log::info!("Connected to Discord as {}!", ready.user.name);
@@ -85,7 +83,7 @@ async fn main() {
                 poise::builtins::register_in_guild(
                     &ctx,
                     &framework.options().commands,
-                    GuildId(guild_id),
+                    GuildId::new(guild_id),
                 )
                 .await?;
                 // Uncomment to register globally.
@@ -100,8 +98,16 @@ async fn main() {
                     rng: Hc128Rng::from_entropy(),
                 })
             })
-        });
+        })
+        .build();
+
+    let mut client =
+        serenity::ClientBuilder::new(token, serenity::GatewayIntents::non_privileged())
+            .framework(framework)
+            .await?;
 
     log::info!("Connecting to Discord...");
-    framework.run().await.expect("Failed to start framework");
+    client.start().await?;
+
+    Ok(())
 }

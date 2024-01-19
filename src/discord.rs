@@ -5,7 +5,7 @@ use crate::{Context, Error};
 /// Gets a user by id from Discord.
 pub(crate) async fn get_user(ctx: Context<'_>, id: &i64) -> Result<serenity::User, Error> {
     log::debug!("Getting name for user {id}");
-    serenity::UserId(*id as u64)
+    serenity::UserId::from(*id as u64)
         .to_user(&ctx.serenity_context())
         .await
         .map_err(|e| e.into())
@@ -15,7 +15,7 @@ pub(crate) async fn get_user(ctx: Context<'_>, id: &i64) -> Result<serenity::Use
 pub(crate) async fn get_nick_or_name(ctx: Context<'_>, user: serenity::User) -> String {
     if let Some(guild_id) = ctx.guild_id() {
         if log::log_enabled!(log::Level::Debug) {
-            if let Some(guild) = guild_id.to_guild_cached(ctx) {
+            if let Some(guild) = guild_id.to_guild_cached(&ctx) {
                 log::debug!(
                     "Getting nickname for {user} in Guild {guild}",
                     user = user.name,

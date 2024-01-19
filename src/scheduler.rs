@@ -3,7 +3,7 @@ use std::{
     sync::{Mutex, RwLock},
 };
 
-use poise::serenity_prelude::{self as serenity};
+use poise::serenity_prelude::{self as serenity, CacheHttp};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use timer::{Guard, Timer};
@@ -52,7 +52,7 @@ where
     ctx: T,
 }
 
-impl<'a, T: AsRef<serenity::Http> + Clone + Send + Sync + 'a> Scheduler<T> {
+impl<'a, T: AsRef<serenity::Http> + CacheHttp + Clone + Send + Sync + 'a> Scheduler<T> {
     pub(crate) fn new(pool: Pool<SqliteConnectionManager>, ctx: T) -> Self {
         Self {
             timer: Mutex::new(Timer::new()),
@@ -120,7 +120,7 @@ impl<'a, T: AsRef<serenity::Http> + Clone + Send + Sync + 'a> Scheduler<T> {
         handle.block_on(async {
             log::info!("Sending scheduled message");
 
-            match serenity::ChannelId(sch.channel_id)
+            match serenity::ChannelId::from(sch.channel_id)
                 .say(&ctx, &sch.msg)
                 .await
             {
