@@ -52,7 +52,7 @@ where
     ctx: T,
 }
 
-impl<'a, T: AsRef<serenity::Http> + CacheHttp + Clone + Send + Sync + 'a> Scheduler<T> {
+impl<T: AsRef<serenity::Http> + CacheHttp + Clone + Send + Sync + 'static> Scheduler<T> {
     pub(crate) fn new(pool: Pool<SqliteConnectionManager>, ctx: T) -> Self {
         Self {
             timer: Mutex::new(Timer::new()),
