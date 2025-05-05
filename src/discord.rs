@@ -35,7 +35,7 @@ use std::fmt::Display;
 
 pub(crate) struct RollDisplay<'a>(pub &'a evaluroll::ast::Roll);
 
-impl<'a> Display for RollDisplay<'a> {
+impl Display for RollDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let roll = self.0;
         if roll.keep {
@@ -48,7 +48,7 @@ impl<'a> Display for RollDisplay<'a> {
 
 pub(crate) struct Output<'a>(pub &'a evaluroll::ast::Output);
 
-impl<'a> Display for Output<'a> {
+impl Display for Output<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

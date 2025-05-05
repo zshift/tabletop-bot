@@ -1,9 +1,11 @@
 mod command;
 mod db;
 mod discord;
+mod exit_on_err;
 mod scheduler;
 
 use dotenvy::dotenv;
+use exit_on_err::MapOrExit;
 use poise::{
     serenity_prelude::{self as serenity, GuildId},
     FrameworkError,
@@ -49,10 +51,11 @@ async fn main() -> Result<()> {
     pretty_env_logger::init();
 
     // Login with a bot token from the env.
-    let token = env::var("DISCORD_TOKEN").expect("Expected DISCORD_TOKEN in the environment");
-    let db_path = env::var("DATABASE_PATH").expect("Expected DATABASE_PATH in the environment");
+    let token = env::var("DISCORD_TOKEN").map_or_exit("Expected DISCORD_TOKEN in the environment");
+    let db_path =
+        env::var("DATABASE_PATH").map_or_exit("Expected DATABASE_PATH in the environment");
     let guild_id: u64 = env::var("GUILD_ID")
-        .expect("Expected GUILD_ID in the environment")
+        .map_or_exit("Expected GUILD_ID in the environment")
         .parse()
         .expect("GUILD_ID must be a number");
 
@@ -95,7 +98,7 @@ async fn main() -> Result<()> {
                 Ok(Data {
                     pool,
                     scheduler: Arc::new(RwLock::new(scheduler)),
-                    rng: Hc128Rng::from_entropy(),
+                    rng: Hc128Rng::from_os_rng(),
                 })
             })
         })
