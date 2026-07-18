@@ -42,7 +42,7 @@ pub async fn experience(ctx: Context<'_>) -> Result<()> {
         .map(|(id, xp)| async move {
             let user = discord::get_user(ctx, id).await?;
             let nick = discord::get_nick_or_name(ctx, user).await;
-            Ok::<_, Error>(format!("{}: {}", nick, xp))
+            Ok::<_, Error>(format!("{nick}: {xp}"))
         })
         .collect::<Vec<_>>();
 
@@ -54,7 +54,7 @@ pub async fn experience(ctx: Context<'_>) -> Result<()> {
         return Ok(());
     }
 
-    log::debug!("Sending experience: {}", user_xp);
+    log::debug!("Sending experience: {user_xp}");
     ctx.say(user_xp).await?;
 
     log::debug!("Done sending experience");
@@ -73,12 +73,12 @@ pub async fn mvp(ctx: Context<'_>, #[description = "MVP"] mvp: serenity::Member)
     match result {
         Ok(_) => {
             let nick = discord::get_nick_or_name(ctx, mvp.user).await;
-            ctx.say(format!("Your vote for {} was registered", nick))
+            ctx.say(format!("Your vote for {nick} was registered"))
                 .await?;
         }
 
         Err(e) => {
-            ctx.say(format!("Error voting for MVP: {}", e)).await?;
+            ctx.say(format!("Error voting for MVP: {e}")).await?;
             return Ok(());
         }
     }
@@ -110,7 +110,7 @@ pub async fn resolve_mvp(ctx: Context<'_>) -> Result<()> {
             let mvp = discord::get_user(ctx, &mvp_id).await?;
             let nick = discord::get_nick_or_name(ctx, mvp).await;
 
-            ctx.say(format!("The MVP is {}!", nick)).await?;
+            ctx.say(format!("The MVP is {nick}!")).await?;
         }
 
         Err(e) => match e {
@@ -118,10 +118,10 @@ pub async fn resolve_mvp(ctx: Context<'_>) -> Result<()> {
                 ctx.say("Not everyone has voted").await?;
             }
             db::Error::Chrono(e) => {
-                ctx.say(format!("Error parsing datetime: {}", e)).await?;
+                ctx.say(format!("Error parsing datetime: {e}")).await?;
             }
             db::Error::Sqlite(e) => {
-                ctx.say(format!("Error querying database: {}", e)).await?;
+                ctx.say(format!("Error querying database: {e}")).await?;
             }
         },
     }
@@ -145,7 +145,7 @@ pub async fn roll(ctx: Context<'_>, #[description = "Dice"] dice: String) -> Res
         }
 
         Err(e) => {
-            ctx.say(format!("Error: {}", e)).await?;
+            ctx.say(format!("Error: {e}")).await?;
         }
     }
     Ok(())
@@ -159,7 +159,7 @@ pub async fn schedule(
     #[description = "Message"] msg: String,
     #[description = "On"] on: serenity::Timestamp,
 ) -> Result<()> {
-    log::info!("Scheduling message: {} on {}", msg, on);
+    log::info!("Scheduling message: {msg} on {on}");
 
     let channel_id = channel.id().get();
 

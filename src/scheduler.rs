@@ -34,8 +34,8 @@ impl From<r2d2::Error> for Error {
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Db(e) => write!(f, "Database error: {}", e),
-            Error::R2d2(e) => write!(f, "R2D2 error: {}", e),
+            Error::Db(e) => write!(f, "Database error: {e}"),
+            Error::R2d2(e) => write!(f, "R2D2 error: {e}"),
         }
     }
 }
@@ -68,7 +68,7 @@ impl<T: AsRef<serenity::Http> + CacheHttp + Clone + Send + Sync + 'static> Sched
 
         match db::get_schedule(&conn)? {
             Some(sch) => {
-                log::info!("Found schedule: `{:?}`. Starting timer.", sch);
+                log::info!("Found schedule: `{sch:?}`. Starting timer.");
                 self.inner_schedule(&sch)
             }
             None => {
@@ -129,14 +129,14 @@ impl<T: AsRef<serenity::Http> + CacheHttp + Clone + Send + Sync + 'static> Sched
                     pool.get()
                         .map(|conn| {
                             db::delete_schedule(&conn).unwrap_or_else(|e| {
-                                log::error!("Error deleting schedule: {}", e);
+                                log::error!("Error deleting schedule: {e}");
                             })
                         })
                         .unwrap_or_else(|e| {
-                            log::error!("Error getting connection: {}", e);
+                            log::error!("Error getting connection: {e}");
                         })
                 }
-                Err(e) => log::error!("Error sending scheduled message: {}", e),
+                Err(e) => log::error!("Error sending scheduled message: {e}"),
             }
         });
     }

@@ -24,7 +24,7 @@ impl From<chrono::ParseError> for Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Error: {:?}", self)
+        write!(f, "Error: {self:?}")
     }
 }
 
@@ -174,7 +174,7 @@ fn parse_schedule(on: String) -> Result<DateTime<Local>> {
     match DateTime::parse_from_rfc3339(&on) {
         Ok(on) => Ok(on.into()),
         Err(e) => {
-            log::error!("Error parsing datetime: {}", e);
+            log::error!("Error parsing datetime: {e}");
             Err(e.into())
         }
     }

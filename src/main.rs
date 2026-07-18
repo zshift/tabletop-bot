@@ -11,7 +11,7 @@ use poise::{
     FrameworkError,
 };
 use r2d2_sqlite::SqliteConnectionManager;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 use rand_hc::Hc128Rng;
 use scheduler::Scheduler;
 use std::{
@@ -35,11 +35,11 @@ where
 }
 
 async fn handle_error<T>(error: FrameworkError<'_, T, Error>) {
-    log::error!("Error: {}", error);
+    log::error!("Error: {error}");
 
     if let Some(ctx) = error.ctx() {
-        if let Err(e) = ctx.say(format!("Error: {}", error)).await {
-            log::error!("Error sending error message: {}", e);
+        if let Err(e) = ctx.say(format!("Error: {error}")).await {
+            log::error!("Error sending error message: {e}");
         }
     }
 }
@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
                 Ok(Data {
                     pool,
                     scheduler: Arc::new(RwLock::new(scheduler)),
-                    rng: Hc128Rng::from_os_rng(),
+                    rng: rand::make_rng(),
                 })
             })
         })
