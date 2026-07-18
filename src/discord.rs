@@ -14,14 +14,14 @@ pub(crate) async fn get_user(ctx: Context<'_>, id: &i64) -> Result<serenity::Use
 /// Gets a user's nickname for the current guild, or defaults to name, from Discord.
 pub(crate) async fn get_nick_or_name(ctx: Context<'_>, user: serenity::User) -> String {
     if let Some(guild_id) = ctx.guild_id() {
-        if log::log_enabled!(log::Level::Debug) {
-            if let Some(guild) = guild_id.to_guild_cached(&ctx) {
-                log::debug!(
-                    "Getting nickname for {user} in Guild {guild}",
-                    user = user.name,
-                    guild = guild.name
-                );
-            }
+        if log::log_enabled!(log::Level::Debug)
+            && let Some(guild) = guild_id.to_guild_cached(&ctx)
+        {
+            log::debug!(
+                "Getting nickname for {user} in Guild {guild}",
+                user = user.name,
+                guild = guild.name
+            );
         }
         user.nick_in(&ctx.serenity_context(), guild_id)
             .await

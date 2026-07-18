@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use chrono::{DateTime, Local};
-use rusqlite::{named_params, Connection};
+use rusqlite::{Connection, named_params};
 
 #[derive(Debug)]
 pub(crate) enum Error {

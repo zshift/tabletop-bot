@@ -1,4 +1,4 @@
-use crate::{db, discord, Context, Error, Result};
+use crate::{Context, Error, Result, db, discord};
 use futures::future;
 use poise::{command, serenity_prelude as serenity};
 

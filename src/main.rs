@@ -7,8 +7,8 @@ mod scheduler;
 use dotenvy::dotenv;
 use exit_on_err::MapOrExit;
 use poise::{
-    serenity_prelude::{self as serenity, GuildId},
     FrameworkError,
+    serenity_prelude::{self as serenity, GuildId},
 };
 use r2d2_sqlite::SqliteConnectionManager;
 use rand::Rng;
@@ -37,10 +37,10 @@ where
 async fn handle_error<T>(error: FrameworkError<'_, T, Error>) {
     log::error!("Error: {error}");
 
-    if let Some(ctx) = error.ctx() {
-        if let Err(e) = ctx.say(format!("Error: {error}")).await {
-            log::error!("Error sending error message: {e}");
-        }
+    if let Some(ctx) = error.ctx()
+        && let Err(e) = ctx.say(format!("Error: {error}")).await
+    {
+        log::error!("Error sending error message: {e}");
     }
 }
 
