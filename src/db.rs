@@ -121,18 +121,21 @@ pub struct ScheduledMessage {
 }
 
 pub(crate) fn create_schedule(conn: &Connection, sch: &ScheduledMessage) -> Result<()> {
-    let mut stmt = conn.prepare(
+    // Convert channel_id to i64 for SQLite storage
+    let channel_id: i64 = u64::cast_signed(sch.channel_id);
+
+    conn.execute(
         "INSERT INTO schedule (id, channel_id, scheduled, msg) VALUES (1, :channel_id, :scheduled, :msg)
-    ON CONFLICT (id) DO UPDATE SET
+        ON CONFLICT (id) DO UPDATE SET
         channel_id = excluded.channel_id,
         scheduled = excluded.scheduled,
         msg = excluded.msg",
+        named_params! {
+            ":channel_id": channel_id,
+            ":scheduled": sch.on.to_rfc3339(),
+            ":msg": sch.msg
+        }
     )?;
-    stmt.execute(named_params! {
-        ":channel_id": sch.channel_id,
-        ":scheduled": sch.on.to_rfc3339(),
-        ":msg": sch.msg
-    })?;
     Ok(())
 }
 
@@ -140,7 +143,8 @@ pub(crate) fn get_schedule(conn: &Connection) -> Result<Option<ScheduledMessage>
     let query = "SELECT channel_id, scheduled, msg FROM schedule";
 
     let query_results = conn.query_row(query, [], |row| {
-        let channel_id = row.get(0)?;
+        let channel_id: i64 = row.get(0)?;
+        let channel_id = channel_id.cast_unsigned(); // Convert i64 back to u64
         let on = row.get(1)?;
         let msg = row.get(2)?;
         Ok(Some((channel_id, on, msg)))

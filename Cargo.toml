@@ -19,9 +19,10 @@ rand = "0.10"
 rand_core = "0.10"
 rand_hc = "0.5"
 r2d2 = "0.8"
-r2d2_sqlite = "0.28"
-rusqlite = { version = "0.35", features = ["bundled"] }
+r2d2_sqlite = "0.33"
+rusqlite = { version = "0.39", features = ["bundled"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+rustls-webpki = "0.103.13"
 
 [dev-dependencies]
 env_logger = "0.11"
